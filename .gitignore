@@ -1,0 +1,11 @@
+#Environnement virtuel
+.venv/
+
+#Python
+__pycache__/
+
+#Editeur
+.vscode/
+
+#uv
+.uv/
