@@ -50,6 +50,8 @@ def get_current_change_version(ebp_db) -> int:
     row = ebp_db.execute(stmt).fetchone()
     return row[0] or 0
 
+def initial_full_sync(table_name: str) -> dict
+
 def sync_table_changes(table_name: str) -> dict:
     """ Synchronise les changements d'une table donnée, définie dans SYNC_TABLES"""
     
