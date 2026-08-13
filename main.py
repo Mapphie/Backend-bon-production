@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from apscheduler.schedulers.background import BackgroundScheduler
-from sync_service import sync_all_tables, SYNC_TABLES
+from sync_service import initial_full_sync_all, sync_all_tables, SYNC_TABLES
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -43,3 +43,9 @@ app = FastAPI(title="EBP Sync API", lifespan=lifespan)
 @app.get("/")
 def root():
     return {"status": "EBP Sync API en ligne", "tables_suivies": list(SYNC_TABLES.keys())}
+
+@app.post("/sync/initial-load")
+def trigger_initial_load():
+    """Charge l'intégralité des données EBP"""
+    results = initial_full_sync_all()
+    return {"message": "Chargement initial effectué", "results": results}

@@ -50,8 +50,51 @@ def get_current_change_version(ebp_db) -> int:
     row = ebp_db.execute(stmt).fetchone()
     return row[0] or 0
 
-def initial_full_sync(table_name: str) -> dict
+def initial_full_sync(table_name: str) -> dict:
+    """Charge l'intégralité des données"""
+    config = SYNC_TABLES[table_name]
+    full_table = config["table"]
+    columns = config["columns"]
+    
+    ebp_db = EbpSession()
+    sync_db = ProductionSession()
+    stats = {"table": table_name, "loaded": 0}
+    
+    try:
+        columns_select = ", ".join(columns)
+        query = text(f"SELECT {columns_select} FROM {full_table}")
+        rows = ebp_db.execute(query).fetchall()
+        
+        for row in rows:
+            values = dict(zip(columns, row))
+            values["sync_updated_at"] = datetime.now()
+            cols = ", ".join(values.keys())
+            params = ", ".join(f":{k}" for k in values.keys())
+            stmt = text(f"INSERT INTO {full_table} ({cols}) VALUES ({params})")
+            sync_db.execute(stmt, values)
+            stats["loaded"] += 1
+            
+        #On enregistre la version actuelle comme point de départ pour les futurs synchro
+        current_version = get_current_change_version(ebp_db)
+        update_last_sync_version(sync_db, table_name, current_version)
+        sync_db.commit()
+        
+    except Exception:
+        sync_db.rollback()
+        raise
+    finally:
+        ebp_db.close()
+        sync_db.close()
+        
+    return stats
 
+def initial_full_sync_all() -> list[dict]:
+    """Charge toutes les tables dans SYNC_TABLES la première fois"""
+    results = []
+    for table_name in SYNC_TABLES:
+        results.append(initial_full_sync(table_name))
+    return results
+    
 def sync_table_changes(table_name: str) -> dict:
     """ Synchronise les changements d'une table donnée, définie dans SYNC_TABLES"""
     
