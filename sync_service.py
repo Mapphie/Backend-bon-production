@@ -29,6 +29,41 @@ SYNC_TABLES = {
         ],
         "pk": "Id",
     },
+    "ItemComponent": {
+        "table": "dbo.ItemComponent",
+        "columns": ["Id", "ItemId", "ParentItemId", "Quantity"],
+        "pk": "Id",
+    },
+    "StockDocument": {
+        "table": "dbo.StockDocument",
+        "columns": [
+            "Id", "DocumentNumber", "NumberPrefix", "DocumentDate", "DocumentType",
+            "DocumentStage", "StorehouseId", "TargetStorehouseId", "OriginDocumentId",
+            "SerialId", "xx_Planning", "xx_Numero_planning_origine",
+            "xx_bon_de_Fabrication", "xx_Etat_de_Production",
+        ],
+        "pk": "Id",
+    },
+    "StockMovement": {
+        "table": "dbo.StockMovement",
+        "columns": [
+            "Id", "ItemId", "DocumentId", "DocumentLineId", "StorehouseId",
+            "DocumentDate", "DocumentOrder", "DocumentNumber", "DocumentType",
+            "DocumentSubType", "MovementType", "Quantity", "RealStock",
+            "VirtualStock", "StockValue", "sysCreatedDate", "sysModifiedDate",
+        ],
+        "pk": "Id",
+    },
+    "StockDocumentLine": {
+        "table": "dbo.StockDocumentLine",
+        "columns": [
+            "Id", "DocumentId", "LineType", "LineOrder", "Quantity", "RealQuantity",
+            "PreviousTotalValue", "StockMovementId", "ItemId", "RangeItemId",
+            "OriginLineId", "ParentLineId", "TopParentLineId", "RemainingQuantity",
+            "StorehouseId", "sysCreatedDate",
+        ],
+        "pk": "Id",
+    },
 }
 
 def get_last_sync_version(sync_db, table_name: str) -> int:
@@ -55,12 +90,14 @@ def initial_full_sync(table_name: str) -> dict:
     config = SYNC_TABLES[table_name]
     full_table = config["table"]
     columns = config["columns"]
-    
+    pk = config["pk"]
+
     ebp_db = EbpSession()
     sync_db = ProductionSession()
-    stats = {"table": table_name, "loaded": 0}
+    stats = {"table": table_name, "inserted_updated": 0}
     
     try:
+
         columns_select = ", ".join(columns)
         query = text(f"SELECT {columns_select} FROM {full_table}")
         rows = ebp_db.execute(query).fetchall()
@@ -68,11 +105,24 @@ def initial_full_sync(table_name: str) -> dict:
         for row in rows:
             values = dict(zip(columns, row))
             values["sync_updated_at"] = datetime.now()
-            cols = ", ".join(values.keys())
-            params = ", ".join(f":{k}" for k in values.keys())
-            stmt = text(f"INSERT INTO {full_table} ({cols}) VALUES ({params})")
-            sync_db.execute(stmt, values)
-            stats["loaded"] += 1
+            
+            exists_stmt = text(f"SELECT 1 FROM {full_table} WHERE {pk} = :id")
+            exists = sync_db.execute(exists_stmt, {"id": values[pk]}).fetchone()
+
+            if exists:
+                set_clause = ", ".join(f"{k} = :{k}" for k in values if k != pk)
+                sync_db.execute(
+                    text(f"UPDATE {full_table} SET {set_clause} WHERE {pk} = :{pk}"),
+                    values,
+                )
+            else:
+                cols = ", ".join(values.keys())
+                params = ", ".join(f":{k}" for k in values.keys())
+                sync_db.execute(
+                    text(f"INSERT INTO {full_table} ({cols}) VALUES ({params})"),
+                    values,
+                )
+            stats["inserted_updated"] += 1
             
         #On enregistre la version actuelle comme point de départ pour les futurs synchro
         current_version = get_current_change_version(ebp_db)
