@@ -36,25 +36,25 @@ ebp_engine = create_engine(EBP_URL, pool_pre_ping=True)
 EbpSession = sessionmaker(bind=ebp_engine, autoflush=False, autocommit=False)
 
 # Connexion à la base cible
-SYNC_URL = build_connectionn_url(
-    server=os.getenv("SYNC_SERVER"),
-    database=os.getenv("SYNC_DATABASE"),
-    user=os.getenv("SYNC_USER"),
-    password=os.getenv("SYNC_PASSWORD")
+PRODUCTION_DATABASE_URL = build_connectionn_url(
+    server=os.getenv("PRODUCTION_SERVER"),
+    database=os.getenv("PRODUCTION_DATABASE"),
+    user=os.getenv("PRODUCTION_USER"),
+    password=os.getenv("PRODUCTION_PASSWORD")
 )
 
-sync_engine = create_engine(SYNC_URL, pool_pre_ping=True)
-SyncSession = sessionmaker(bind=sync_engine, autoflush=False, autocommit=False)
+production_engine = create_engine(PRODUCTION_DATABASE_URL, pool_pre_ping=True)
+ProductionSession = sessionmaker(bind=production_engine, autoflush=False, autocommit=False)
 
 def get_ebp_db():
-    db = EbpSession()
+    session = EbpSession()
     try:
-        yield db
+        yield session
     finally:
-        db.close()
+        session.close()
         
 def get_sync_db():
-    db = SyncSession()
+    session = ProductionSession()
     try:
-        yield db
-    finally:db.close()
+        yield session
+    finally:session.close()
