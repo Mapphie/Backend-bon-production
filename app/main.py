@@ -5,7 +5,7 @@ import logging
 
 from app.core.config import settings
 from app.sync.service import sync_all_tables
-from app.routes import sync, products, colors
+from app.routes import documents, sync, products
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sync")
@@ -42,7 +42,7 @@ app = FastAPI(title="EBP Sync API", lifespan=lifespan)
 
 app.include_router(sync.router, prefix="/sync", tags=["Synchronisation"])
 app.include_router(products.router, tags=["Produits"])
-
+app.include_router(documents.router, tags=["OA Actifs"])
 
 @app.get("/")
 def root():

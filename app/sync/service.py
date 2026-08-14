@@ -1,7 +1,9 @@
 from datetime import datetime
 from sqlalchemy import text
-from app.database.database import EbpSession, ProductionSession
+from app.database.database import EbpSession, SyncSession
 from app.sync.tables import SYNC_TABLES
+
+STOCKITEM_COLUMNS = ["ItemId", "StorehouseId", "RealStock", "VirtualStock", "OrderedQuantity", "VirtualStockValue"]
 
 def get_last_sync_version(sync_db, table_name: str) -> int:
     stmt = text("SELECT last_sync_version FROM dbo.sync_state WHERE table_name = :table_name")
@@ -30,7 +32,7 @@ def initial_full_sync(table_name: str) -> dict:
     pk = config["pk"]
 
     ebp_db = EbpSession()
-    sync_db = ProductionSession()
+    sync_db = SyncSession()
     stats = {"table": table_name, "inserted_updated": 0}
     
     try:
@@ -77,9 +79,8 @@ def initial_full_sync(table_name: str) -> dict:
 
 def initial_full_sync_all() -> list[dict]:
     """Charge toutes les tables dans SYNC_TABLES la première fois"""
-    results = []
-    for table_name in SYNC_TABLES:
-        results.append(initial_full_sync(table_name))
+    results = [initial_full_sync(table_name) for table_name in SYNC_TABLES]
+    results.append(initial_full_sync_stockitem())
     return results
     
 def sync_table_changes(table_name: str) -> dict:
@@ -91,7 +92,7 @@ def sync_table_changes(table_name: str) -> dict:
     pk = config["pk"]
     
     ebp_db = EbpSession()
-    sync_db = ProductionSession()
+    sync_db = SyncSession()
     stats = {"table": table_name, "inserted_updated": 0, "deleted": 0, "from_version": 0, "to_version": 0}
     
     try:
@@ -153,8 +154,119 @@ def sync_table_changes(table_name: str) -> dict:
     return stats
 
 def sync_all_tables() -> list[dict]:
-    """Synchronise les tables dans SYNC_TABLES dans l'ordre"""
-    results = []
-    for table in SYNC_TABLES:
-        results.append(sync_table_changes(table))
+    """Synchronise les tables dans SYNC_TABLES dans l'ordre ete ensuite StockItem"""
+    results = [sync_table_changes(table_name) for table_name in SYNC_TABLES]
+    results.append(sync_stockitem_changes())
     return results
+
+def sync_stockitem_changes() -> dict:
+    """Synchronisation StockItem (clé primaire composite ItemId + StorehouseId)"""
+
+    full_table = "dbo.StockItem"
+    ebp_db = EbpSession()
+    sync_db = SyncSession()
+    stats = {"table": "StockItem", "inserted_updated": 0, "deleted": 0, "from_version": 0, "to_version": 0}
+
+    try:
+        last_version = get_last_sync_version(sync_db, "StockItem")
+        current_version = get_current_change_version(ebp_db)
+        stats["from_version"] = last_version
+        stats["to_version"] = current_version
+
+        if current_version <= last_version:
+            return stats
+        
+        columns_select = ", ".join(f"src.{column}" for column in STOCKITEM_COLUMNS)
+        query = text(f"""
+            SELECT ct.SYS_CHANGE_OPERATION, ct.ItemId, ct.StorehouseId, {columns_select}
+            FROM CHANGETABLE(CHANGES {full_table}, :last_version) AS ct
+            LEFT JOIN {full_table} src
+                ON src.ItemId = ct.ItemId AND src.StorehouseId = ct.StorehouseId
+        """)
+
+        changes = ebp_db.execute(query, {"last_version": last_version}).fetchall()
+
+        for row in changes:
+            op = row[0]
+            item_id, storehouse_id = row[1], row[2]
+
+            if op =="D":
+                stmt = text(f"DELETE FROM {full_table} WHERE ItemId = :i AND StorehouseId = :s")
+                sync_db.execute(stmt, {"i": item_id, "s": storehouse_id})
+                stats["deleted"] += 1
+            else:
+                values = dict(zip(STOCKITEM_COLUMNS, row[3:]))
+                values["sync_updated_at"] = datetime.now()
+
+                exists_stmt = text(f"SELECT 1 FROM {full_table}  WHERE ItemId = :i AND StorehouseId = :s")
+                exists = sync_db.execute(exists_stmt, {"i": item_id, "s": storehouse_id}).fetchone()
+
+                if exists:
+                    set_clause = ", ".join(f"{k} = :{k}" for k in values if k not in ("ItemId", "StorehouseId"))
+                    sync_db.execute(text(f"UPDATE {full_table} SET {set_clause} WHERE ItemId = :ItemId AND StorehouseId = :StorehouseId"), values)
+                
+                else:
+                    cols = ", ".join(values.keys())
+                    params = ", ".join(f":{k}" for k in values.keys())
+                    sync_db.execute(text(f"INSERT INTO {full_table} ({cols}) VALUES ({params})"), values)
+                    stats["inserted_updated"] += 1
+
+        update_last_sync_version(sync_db,"StockItem", current_version)
+        sync_db.commit()
+
+    except Exception:
+        sync_db.rollback()
+        raise
+    finally:
+        ebp_db.close()
+        sync_db.close()
+
+    return stats
+
+def initial_full_sync_stockitem() -> dict:
+    """Charge l'intégralité de StockItem (clé composite)"""
+    full_table = "dbo.StockItem"
+    ebp_db = EbpSession()
+    sync_db = SyncSession()
+    stats = {"table": "StockItem", "inserted_updated": 0}
+
+    try:
+        columns_select = ", ".join(STOCKITEM_COLUMNS)
+        rows = ebp_db.execute(text(f"SELECT {columns_select} FROM {full_table}")).fetchall()
+
+        for row in rows:
+            values = dict(zip(STOCKITEM_COLUMNS, row))
+            values["sync_updated_at"] = datetime.now()
+
+            exists = sync_db.execute(
+                text(f"SELECT 1 FROM {full_table} WHERE ItemId = :ItemId AND StorehouseId = :StorehouseId"),
+                values,
+            ).fetchone()
+
+            if exists:
+                set_clause = ", ".join(f"{k} = :{k}" for k in values if k not in ("ItemId", "StorehouseId"))
+                sync_db.execute(
+                    text(f"UPDATE {full_table} SET {set_clause} WHERE ItemId = :ItemId AND StorehouseId = :StorehouseId"),
+                    values,
+                )
+            else:
+                cols = ", ".join(values.keys())
+                params = ", ".join(f":{k}" for k in values.keys())
+                sync_db.execute(
+                    text(f"INSERT INTO {full_table} ({cols}) VALUES ({params})"),
+                    values,
+                )
+            stats["inserted_updated"] += 1
+
+        current_version = get_current_change_version(ebp_db)
+        update_last_sync_version(sync_db, "StockItem", current_version)
+        sync_db.commit()
+
+    except Exception:
+        sync_db.rollback()
+        raise
+    finally:
+        ebp_db.close()
+        sync_db.close()
+
+    return stats
