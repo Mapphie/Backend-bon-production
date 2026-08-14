@@ -7,6 +7,9 @@ from app.core.config import settings
 from app.sync.service import sync_all_tables
 from app.routes import documents, sync, products
 
+from fastapi.middleware.cors import CORSMiddleware
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sync")
 
@@ -39,6 +42,14 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     
 app = FastAPI(title="EBP Sync API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(sync.router, prefix="/sync", tags=["Synchronisation"])
 app.include_router(products.router, tags=["Produits"])
