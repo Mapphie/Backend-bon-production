@@ -1,29 +1,28 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
-from sync_service import initial_full_sync_all, sync_all_tables, SYNC_TABLES
 import logging
+
+from app.core.config import settings
+from app.sync.service import sync_all_tables
+from app.routes import sync, products, colors
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sync")
 
 scheduler = BackgroundScheduler()
-last_sync_results = []
 
 def scheduled_sync():
-    global last_sync_results
     try:
         results = sync_all_tables()
-        last_sync_results = results
         for r in results:
             if r["inserted_updated"] or r["deleted"]:
                 logger.info(f"Sync {r['table']}: {r}")
     except Exception as e:
         logger.error(f"Erreur de synchro: {e}")
-
+        
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- Exécuté au démarrage ---
     logger.info("Synchronisation initiale au démarrage...")
     try:
         results = sync_all_tables()
@@ -32,20 +31,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Erreur lors de la synchro initiale: {e}")
 
-    scheduler.add_job(scheduled_sync, "interval", minutes=5, id="sync_all")
+    scheduler.add_job(scheduled_sync, "interval", minutes=settings.SYNC_INTERVAL_MINUTES, id="sync_all")
     scheduler.start()
 
-    yield  
-    scheduler.shutdown()
+    yield
 
+    scheduler.shutdown()
+    
 app = FastAPI(title="EBP Sync API", lifespan=lifespan)
+
+app.include_router(sync.router, prefix="/sync", tags=["Synchronisation"])
+app.include_router(products.router, tags=["Produits"])
+
 
 @app.get("/")
 def root():
-    return {"status": "EBP Sync API en ligne", "tables_suivies": list(SYNC_TABLES.keys())}
-
-@app.post("/sync/initial-load")
-def trigger_initial_load():
-    """Charge l'intégralité des données EBP"""
-    results = initial_full_sync_all()
-    return {"message": "Chargement initial effectué", "results": results}
+    return {"status": "EBP Sync API en ligne"}
