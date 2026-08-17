@@ -3,7 +3,7 @@ Script d'inspection des tables dans EBP
 """
 
 import sys
-from database import ebp_engine
+from app.database.database import ebp_engine
 from sqlalchemy import inspect
 
 def inspect_table(table_name: str):

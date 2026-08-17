@@ -1,4 +1,4 @@
-from database import sync_engine
+from app.database.database import sync_engine
 from sqlalchemy import text
 
 with sync_engine.connect() as conn:
