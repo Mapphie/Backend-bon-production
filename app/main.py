@@ -5,7 +5,7 @@ import logging
 
 from app.core.config import settings
 from app.sync.service import sync_all_tables
-from app.routes import documents, sync, products
+from app.routes import auth, documents, sync, products
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -54,6 +54,7 @@ app.add_middleware(
 app.include_router(sync.router, prefix="/sync", tags=["Synchronisation"])
 app.include_router(products.router, tags=["Produits"])
 app.include_router(documents.router, tags=["OA Actifs"])
+app.include_router(auth.router)
 
 @app.get("/")
 def root():
