@@ -42,13 +42,13 @@ def register(user: UserCreate):
         insert_query = text("""
             INSERT INTO dbo.users (username, password, role)
             OUTPUT INSERTED.id, INSERTED.username, INSERTED.role, INSERTED.is_active 
-            values (:username; :password, :role)                   
+            values (:username, :password, :role)                   
         """)
         row = db.execute(insert_query, {
             "username": user.username,
             "password": hash_password(user.password),
             "role": user.role,
-        }).mapping().first()
+        }).mappings().first()
         
         db.commit()
         
