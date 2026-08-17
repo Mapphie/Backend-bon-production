@@ -37,10 +37,20 @@ def get_couleurs():
     
 @router.get("/couleurs/actives", response_model=List[Color])
 def get_active_colors():
-    query = text(" SELECT DISTINCT CodeCouleur, CouleurCaption FROM dbo.vw_OA_Actifs WHERE CodeCouleur IS NOT NULL ORDER BY CodeCouleur")
+    query = text("SELECT DISTINCT CodeCouleur, CouleurCaption FROM dbo.vw_OA_Actifs WHERE CodeCouleur IS NOT NULL ORDER BY CodeCouleur")
     try:
         with SyncSession() as db:
             results = db.execute(query).mappings().all()
             return results
     except Exception as e:
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération des codes couleurs")
+    
+@router.get("/gamme_produit/active")
+def get_gamme_produit(couleurId: str):
+    query = text("SELECT DISTINCT RangeItemId FROM dbo.OA_Actifs WHERE CouleurId = :couleur_id")
+    try:
+        with SyncSession() as db:
+            result = db.execute(query, {"couleur_id": couleurId}).mappings().all()
+            return result
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erreur lors de la récupération des gammes produits")
