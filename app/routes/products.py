@@ -46,11 +46,12 @@ def get_active_colors():
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération des codes couleurs")
     
 @router.get("/gamme_produit/active")
-def get_gamme_produit(couleurId: str):
-    query = text("SELECT DISTINCT RangeItemId FROM dbo.OA_Actifs WHERE CouleurId = :couleur_id")
+def get_gamme_produit(code: str):
+    query = text("SELECT DISTINCT RangeItemId FROM dbo.vw_OA_Actifs WHERE CodeCouleur = :code")
     try:
         with SyncSession() as db:
-            result = db.execute(query, {"couleur_id": couleurId}).mappings().all()
+            result = db.execute(query, {"code": code}).mappings().all()
             return result
-    except Exception:
+    except Exception as e:
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération des gammes produits")
+        # raise e
