@@ -1,9 +1,16 @@
-from fastapi import APIRouter
+from typing import List
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.database.database import SyncSession
 
 router = APIRouter()
+class Color(BaseModel):
+    Id: str
+    CodeCouleur: str
+    CouleurCaption: str | None = None
 
 @router.get("/produits-gamme")
 def get_produits_gamme():
@@ -27,3 +34,13 @@ def get_couleurs():
     with SyncSession() as db:
         rows = db.execute(query).mappings().all()
         return [dict(r) for r in rows]
+    
+@router.get("/couleurs/actives", response_model=List[Color])
+def get_active_colors():
+    query = text(" SELECT DISTINCT CodeCouleur, CouleurCaption FROM dbo.vw_OA_Actifs WHERE CodeCouleur IS NOT NULL ORDER BY CodeCouleur")
+    try:
+        with SyncSession() as db:
+            results = db.execute(query).mappings().all()
+            return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Erreur lors de la récupération des codes couleurs")

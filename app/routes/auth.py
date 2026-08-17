@@ -107,7 +107,7 @@ def get_current_user(token: str= Depends(oauth2_scheme)) -> dict:
 @router.get("/me", response_model=UserOut)
 def me(current_user: dict = Depends(get_current_user)):
     with SyncSession() as db:
-        query = text("SELECT id, username, role, is_active from dbo_users WHERE id = :id")
+        query = text("SELECT id, username, role, is_active from dbo.users WHERE id = :id")
         result = db.execute(query, {"id": current_user["id"]}).mappings().first()
         
     if not result:
