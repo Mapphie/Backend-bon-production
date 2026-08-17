@@ -55,3 +55,13 @@ def get_gamme_produit(code: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération des gammes produits")
         # raise e
+
+@router.get("/planning/actifs")
+def get_actif_planning(couleur: str, gamme: str):
+    query = text("SELECT DISTINCT DocumentNumber as number FROM dbo.vw_OA_Actifs WHERE CodeCouleur= :code AND RangeItemId= :gamme")
+    try:
+        with SyncSession() as db:
+            result = db.execute(query, {"code": couleur,"gamme": gamme}).mappings().all()
+            return result
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erreur lors de la récupération des numéro de planning")
