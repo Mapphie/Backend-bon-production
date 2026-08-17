@@ -8,7 +8,7 @@ from app.database.database import SyncSession
 
 router = APIRouter()
 class Color(BaseModel):
-    Id: str
+    CouleurId: str
     CodeCouleur: str
     CouleurCaption: str | None = None
 
@@ -37,7 +37,7 @@ def get_couleurs():
     
 @router.get("/couleurs/actives", response_model=List[Color])
 def get_active_colors():
-    query = text(" SELECT DISTINCT CodeCouleur, CouleurCaption FROM dbo.vw_OA_Actifs WHERE CodeCouleur IS NOT NULL ORDER BY CodeCouleur")
+    query = text(" SELECT DISTINCT CouleurId, CodeCouleur, CouleurCaption FROM dbo.vw_OA_Actifs WHERE CodeCouleur IS NOT NULL ORDER BY CodeCouleur")
     try:
         with SyncSession() as db:
             results = db.execute(query).mappings().all()
